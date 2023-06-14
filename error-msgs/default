@@ -1,0 +1,5 @@
+InvalidFile: Failed to open the code file. Stop interpreting.
+FailedMemStream: Failed to create memory stream. Stop interpreting.
+TokenTooLong: The token is too long. The token should have less than 64 characters.
+InvalidToken: The token is invalid.
+UnrecognizableCharacter: Cannot recognize this token.
