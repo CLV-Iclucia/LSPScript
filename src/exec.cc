@@ -3,6 +3,7 @@
 //
 #include <ast.h>
 #include <error-handling.h>
+#include <iostream>
 static AstNode *for_begin = nullptr, *for_cont = nullptr;
 
 void Exec(AstNode* cur);

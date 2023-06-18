@@ -19,17 +19,9 @@ enum BasicType {
     Tp_Array
 };
 
-struct Type {
-  BasicType type;
-  Type* params = nullptr;
-  Type* nxt = nullptr;
-  uint rows = 0, cols = 0;
-};
-
 struct Obj {
   bool is_func;
   Token* name;
-  Type* tp = nullptr;
   Obj* params;
   union {
     int int_num = 0;

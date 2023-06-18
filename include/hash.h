@@ -35,7 +35,7 @@ class GeneralHashMap {
     bucket_[idx] = new Node(val, hashval, hd);
     sz_++;
   }
-  ull hash(const char* str) {
+  ull hash(const char* str) const {
     const char* p = str;
     ull sum = 0ull, pw = 1ull;
     for (; *p != '\0'; p++) {
@@ -48,7 +48,7 @@ class GeneralHashMap {
     ull hashval = hash(str);
     return FindByHash(hashval);
   }
-  uint hash(const char* str, uint n) const {
+  ull hash(const char* str, uint n) const {
     ull sum = 0ull, pw = 1ull;
     for (uint i = 0; i < n; i++) {
       sum += pw * str[i];

@@ -18,9 +18,9 @@ static bool IsReserved(Token* tk) {
   static char reserved_list[][10] = {
       "var", "if", "else", "for", "spm", "vec", "return", "break", "continue"
   };
-  static GeneralHashMap<24, 1331, uint> reserved_hash;
+  static GeneralHashMap<9, 1331, uint> reserved_hash;
   if (reserved_hash.empty()) {  // init reserved_hash
-    for (uint i = 0; i < sizeof(reserved_list) / (sizeof(char) * 10); i++)
+    for (uint i = 0; i < 9; i++)
       reserved_hash.insert(reserved_list[i], i);
   }
   return reserved_hash.find(tk->loc, tk->len);

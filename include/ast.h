@@ -46,7 +46,6 @@ struct AstNode {
       : sem(sem_), lhs(lhs_), rhs(rhs_) {}
   AstNode(Semantic sem_, Obj* obj) : sem(sem_), var(obj) {}
   Semantic sem;
-  Type *tp = nullptr;
   AstNode *lhs = nullptr, *rhs = nullptr;  // for expr
   AstNode *cond = nullptr, *then = nullptr,
           *else_then = nullptr;            // for if...else
@@ -60,6 +59,7 @@ struct AstNode {
  //   VectorXd vec;
   }eval;
   BasicType type = Tp_Undef;
+
   Obj* var = nullptr;
   Token* tk = nullptr;
 };

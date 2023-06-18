@@ -1,0 +1,3 @@
+[submodule "external/SpmX"]
+	path = external/SpmX
+	url = git@github.com:CLV-Iclucia/SpmX.git

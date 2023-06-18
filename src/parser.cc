@@ -61,7 +61,6 @@ static Obj* ParseDeclarator() {
   if (FindVar(cur) == FoundAtCurrentScope) ThrowError(cur, RepeatedDeclaration);
   Obj* obj = new Obj;
   obj->name = cur;
-  obj->tp = new Type;
   cur = cur->nxt;
   return obj;
 }
@@ -327,8 +326,8 @@ static AstNode* ParseTriplets() {
 }
 
 /**
- * declare-spm = "spm""<" uint "," uint ">" declarator ";"
- * declare-vec = "vec""<" uint ">" declarator ";"
+ * declare-spm = "spm""<" uint "," uint ">" declarator ("=" triplet-list)?";"
+ * declare-vec = "vec""<" uint ">" declarator ("=" scalar-list)?";"
  */
 static AstNode* ParseMatVecDeclaration() {
   bool is_spm = false, is_vec = false;
@@ -354,6 +353,9 @@ static AstNode* ParseMatVecDeclaration() {
     }
   }
   Obj* obj = ParseDeclarator();
+  if (Consume(cur, "=")) {
+
+  }
   Skip(cur, ";");
 }
 
