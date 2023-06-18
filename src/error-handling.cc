@@ -1,12 +1,12 @@
 #include <error-handling.h>
 
-void ThrowMsgError(Token* tk, ErrorType error, const char *msg) {
+void ThrowMsgError(Token* tk, ErrorType error, const char* msg) {
   tk->error_msg = msg;
   ThrowError(tk, error);
 }
 
 void ThrowError(Token* tk, ErrorType error) {
-  if(tk == nullptr) exit(-1);
+  if (tk == nullptr) exit(-1);
   std::printf("Error at line %d:%d: ", tk->line_no, tk->offset + 1);
   switch (error) {
     case TokenTooLong:
@@ -50,8 +50,7 @@ void ThrowError(Token* tk, ErrorType error) {
       break;
     case UnknownIdentifier:
       std::printf("Unknown identifier \"");
-      for (uint i = 0; i < tk->len; i++)
-        putchar(tk->loc[i]);
+      for (uint i = 0; i < tk->len; i++) putchar(tk->loc[i]);
       std::printf("\".\n");
       break;
     case EmptyDeclarationStmt:
@@ -59,14 +58,21 @@ void ThrowError(Token* tk, ErrorType error) {
       break;
     case RepeatedDeclaration:
       std::printf("Repeated declaration of identifier \"");
-      for (uint i = 0; i < tk->len; i++)
-        putchar(tk->loc[i]);
+      for (uint i = 0; i < tk->len; i++) putchar(tk->loc[i]);
       std::printf("\".\n");
+      break;
+    case LvalueExpected:
+      std::printf("Left value expected at the left hand side.\n");
+      break;
+    case ComplexTypeInitNotAllowed:
+      std::printf(
+          "Declaring a complex type when initializing a for loop is not "
+          "allowed.\n");
       break;
   }
   std::printf("%d| ", tk->line_no);
   uint line_no_width = 0;
-  while(tk->line_no) {
+  while (tk->line_no) {
     tk->line_no /= 10;
     line_no_width++;
   }

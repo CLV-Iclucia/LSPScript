@@ -3,7 +3,7 @@ x + 4;
 y + x;
 if (x > 1) {
     y + 1;
-    x++
+    x++;
 } else if (x <2) {
     x--;
 } else y++;

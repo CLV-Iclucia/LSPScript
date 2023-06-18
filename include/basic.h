@@ -12,6 +12,7 @@ enum BasicType {
     Tp_Function,
     Tp_Int,
     Tp_Real,
+    Tp_Undef,
     Tp_Triplet,
     Tp_Spm,
     Tp_Vector,
@@ -28,8 +29,13 @@ struct Type {
 struct Obj {
   bool is_func;
   Token* name;
-  Type* tp;
+  Type* tp = nullptr;
   Obj* params;
+  union {
+    int int_num = 0;
+    Real real_num;
+  }eval;
+  BasicType type = Tp_Undef;
 };
 
 struct Scope {

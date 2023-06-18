@@ -89,6 +89,10 @@ static void OutputNode(FILE* fp, AstNode* cur) {
       std::fprintf(fp, "\"];");
       break;
     case SM_Var:
+      std::fprintf(fp, "Var ");
+      for (uint i = 0; i < cur->var->name->len; i++)
+        fputc(cur->var->name->loc[i], fp);
+      std::fprintf(fp, "\"];");
       break;
   }
   std::fprintf(fp, "\n");

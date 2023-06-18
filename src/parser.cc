@@ -16,12 +16,9 @@ static Scope* local = nullptr;
 static AstNode* ParseExpr();
 static AstNode* ParseStmt();
 static AstNode* ParseStmts();
+static AstNode* ParseDeclaration();
 static Obj* LookUpVar(Token* tk);
-enum FindState{
-    FoundAtCurrentScope,
-    FoundAtOuterScope,
-    NotFound
-};
+enum FindState { FoundAtCurrentScope, FoundAtOuterScope, NotFound };
 static FindState FindVar(Token* tk);
 static bool Consume(Token*& tk, const char* str) {
   if (Equal(tk, str)) {
@@ -74,19 +71,20 @@ static Obj* ParseDeclarator() {
  * @return
  */
 static AstNode* ParsePrimary() {
+  AstNode* ast = nullptr;
   if (Consume(cur, "(")) {
-    AstNode* ast = ParseExpr();
+    ast = ParseExpr();
     Skip(cur, ")");
     return ast;
   } else if (cur->type == TK_Identifier) {
     if (FindVar(cur) != NotFound) {
       Obj* obj = LookUpVar(cur);
+      cur = cur->nxt;
       return new AstNode(SM_Var, obj);
-    }
-    else
+    } else
       ThrowError(cur, UnknownIdentifier);
   } else if (cur->type == TK_Int || cur->type == TK_Real) {
-    AstNode* ast = new AstNode(SM_Const, nullptr, nullptr);
+    ast = new AstNode(SM_Const, nullptr, nullptr);
     if (cur->type == TK_Int) {
       ast->type = Tp_Int;
       ast->eval.int_num = cur->int_num;
@@ -95,8 +93,8 @@ static AstNode* ParsePrimary() {
       ast->eval.real_num = cur->real_num;
     }
     cur = cur->nxt;
-    return ast;
   }
+  return ast;
 }
 
 /**
@@ -283,7 +281,12 @@ static AstNode* ParseStmt() {
     Skip(cur, "(");
     EnterScope();
     ast = new AstNode(SM_For);
-    ast->init = ParseExprStmt();
+    if (Equal(cur, "var")) {
+      ast->init = ParseDeclaration();
+    } else if (Equal(cur, "vec") || Equal(cur, "spm"))
+      ThrowError(cur, ComplexTypeInitNotAllowed);
+    else
+      ast->init = ParseExprStmt();
     ast->cond = ParseExpr();
     Skip(cur, ";");
     ast->inc = ParseExpr();
@@ -300,10 +303,10 @@ static AstNode* ParseStmt() {
 static AstNode* ParseStmts() {
   EnterScope();
   AstNode* ast = new AstNode(SM_Block);
+  AstNode* tail = ast;
   while (!Consume(cur, "}")) {
-    AstNode* stmt = ParseStmt();
-    stmt->nxt = ast->nxt;
-    ast->nxt = stmt;
+    tail->nxt = ParseStmt();
+    tail = tail->nxt;
   }
   LeaveScope();
   return ast;
@@ -355,8 +358,7 @@ static AstNode* ParseMatVecDeclaration() {
 }
 
 static void AddScope(Obj* obj) {
-  if (cur_scope->vars == nullptr)
-    cur_scope->vars = new HashMap<64, Obj*>;
+  if (cur_scope->vars == nullptr) cur_scope->vars = new HashMap<64, Obj*>;
   cur_scope->vars->insert(obj->name->loc, obj->name->len, obj);
 }
 
@@ -365,8 +367,10 @@ static FindState FindVar(Token* tk) {
   for (Scope* scope = cur_scope; scope; scope = scope->nxt) {
     if (scope->vars == nullptr) continue;
     if (scope->vars->FindByHash(hash_code)) {
-      if (scope == cur_scope) return FoundAtCurrentScope;
-      else return FoundAtOuterScope;
+      if (scope == cur_scope)
+        return FoundAtCurrentScope;
+      else
+        return FoundAtOuterScope;
     }
   }
   return NotFound;
@@ -384,7 +388,8 @@ static Obj* LookUpVar(Token* tk) {
 
 /**
  * declaration = declare-var | declare-spm | declare-vec
- * declare-var = "var"(declarator ("=" expr)?("," declarator("=" expr)?)*)?";"
+ * declare-var = "var"(declarator ("=" assign)?("," declarator("="
+ * assign)?)*)?";"
  */
 static AstNode* ParseDeclaration() {
   if (Equal(cur, "spm") || Equal(cur, "vec")) return ParseMatVecDeclaration();
@@ -392,15 +397,17 @@ static AstNode* ParseDeclaration() {
   uint decl_cnt = 0;
   AstNode* ast = nullptr;
   while (!Equal(cur, ";")) {
-    if(decl_cnt > 0) Skip(cur, ",");
+    if (decl_cnt > 0) Skip(cur, ",");
     decl_cnt++;
     Obj* obj = ParseDeclarator();
     AddScope(obj);
     if (Consume(cur, "=")) {
-      AstNode* decl = ParseExpr();
+      AstNode* decl = ParseAssign();
       decl = new AstNode(SM_Assign, new AstNode(SM_Var, obj), decl);
-      if (decl_cnt == 0) ast = decl;
-      else ast = new AstNode(SM_Comma, ast, decl);
+      if (decl_cnt == 1)
+        ast = decl;
+      else
+        ast = new AstNode(SM_Comma, ast, decl);
     }
   }
   Skip(cur, ";");

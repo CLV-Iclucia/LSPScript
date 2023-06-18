@@ -59,7 +59,7 @@ struct AstNode {
 //    SparseMatrixXd spm;
  //   VectorXd vec;
   }eval;
-  BasicType type;
+  BasicType type = Tp_Undef;
   Obj* var = nullptr;
   Token* tk = nullptr;
 };

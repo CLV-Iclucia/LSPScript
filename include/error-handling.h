@@ -22,7 +22,9 @@ enum ErrorType {
   DimShouldBePosInt,
   UnknownIdentifier,
   EmptyDeclarationStmt,
-  RepeatedDeclaration
+  RepeatedDeclaration,
+  LvalueExpected,
+  ComplexTypeInitNotAllowed,
 };
 
 [[noreturn]] void ThrowError(Token *, ErrorType);

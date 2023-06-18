@@ -7,6 +7,7 @@ extern Token* Tokenize();
 extern AstNode* Parse(Token *head);
 extern void VisualizeAst(AstNode* ast, const char* output_path, const char* prog_name);
 extern void PrintTokenStream();
+extern void Exec(AstNode* ast);
 int main(int argc, char** argv) {
   if (argc < 2) {
     std::printf("Lspi command line launched.\n");
@@ -42,6 +43,7 @@ int main(int argc, char** argv) {
       std::printf("Visualizing abstract syntax tree done.\n");
     }
     std::printf("---------------------------------------------------------------------------\n");
-  //  std::printf("Start executing...\n");
+    std::printf("Start executing...\n");
+    Exec(ast);
   }
 }
