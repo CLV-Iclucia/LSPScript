@@ -2,35 +2,29 @@
 // Created by creeper on 23-5-28.
 //
 
-#include <token.h>
+#include <ast.h>
 #include <basic.h>
 #include <error-handling.h>
-#include <ast.h>
+#include <token.h>
 
 static const uint kHashBucketSize = 1024;
-static Token *cur_tk = nullptr;
-static Scope *cur_scope = nullptr;
-static Scope *global = nullptr;
-static Scope *local = nullptr;
+static Token* cur = nullptr;
+static Scope* cur_scope = nullptr;
+static Scope* global = nullptr;
+static Scope* local = nullptr;
 
+static AstNode* ParseExpr();
 static AstNode* ParseStmt();
 static AstNode* ParseStmts();
-
-/**
- * function_decl = "func" declarator type_suf
- * function = function_decl '{' compound_stmts
- * function_declaration = function_decl ';'
- * compound_stmts = (stmt)* '}'
- * function_decl = identifier ('('identifier_list')' | '(' ')')
- * identifier_list = (identifier',')* identifier
- * stmt =
- */
-
-static void CreateParams(Type* tp) {
-
-}
+static Obj* LookUpVar(Token* tk);
+enum FindState{
+    FoundAtCurrentScope,
+    FoundAtOuterScope,
+    NotFound
+};
+static FindState FindVar(Token* tk);
 static bool Consume(Token*& tk, const char* str) {
-  if(Equal(tk, str)) {
+  if (Equal(tk, str)) {
     tk = tk->nxt;
     return true;
   }
@@ -38,72 +32,229 @@ static bool Consume(Token*& tk, const char* str) {
 }
 
 static void Skip(Token*& tk, const char* str) {
-  if(Equal(tk, str))
+  if (Equal(tk, str))
     tk = tk->nxt;
   else
     ThrowMsgError(tk, TokenExpected, str);
 }
 
 /**
- * Following the method in chibicc, I use a stack (in fact implemented in linked list) to manage the scopes
+ * Following the method in chibicc, I use a stack (in fact implemented in linked
+ * list) to manage the scopes
  */
 static void EnterScope() {
-  Scope *new_scope = new Scope;
+  Scope* new_scope = new Scope;
   new_scope->nxt = cur_scope;
   cur_scope = new_scope;
 }
 
 static void LeaveScope() {
-  Scope *prv_scope = cur_scope;
+  Scope* prv_scope = cur_scope;
   cur_scope = cur_scope->nxt;
   delete prv_scope;
 }
 
-// funct-params = ident')'
-static Type* ParseFunctParam(Token *tk) {
-  if(Equal(tk, ")")) return nullptr;
-  if(tk->type == TK_Identifier) {
-
-  }
-  Skip(tk, ")");
-}
-
-// type-suffix = ('(' funct_params) | ('(' array_dim) | epsilon
-static Type* ParseTypeSuffix() {
-  Type *tp = nullptr;
-  if (Consume(cur_tk, "{")) {
-
-  }
-  if (Consume(cur_tk, "[")) {
-
-  }
-
-}
-
 /**
- * declarator = ('(' ident ')' | '('declarator')' | ident) type-suf
- *
+ * currently I only support ident
+ * declarator = ident
  * @return
  */
-static Type* ParseDeclarator() {
-  if (cur_tk->type != TK_Identifier)
-    ThrowError(cur_tk, MissingDeclarator);
-  cur_tk = cur_tk->nxt;
-  Type *tp = new Type;
-  tp = ParseTypeSuffix();
+static Obj* ParseDeclarator() {
+  if (cur->type != TK_Identifier) ThrowError(cur, MissingDeclarator);
+  if (FindVar(cur) == FoundAtCurrentScope) ThrowError(cur, RepeatedDeclaration);
+  Obj* obj = new Obj;
+  obj->name = cur;
+  obj->tp = new Type;
+  cur = cur->nxt;
+  return obj;
 }
 
 /**
- * expr = assign-op assign
+ * primary = "("expr")" | ident | num
+ * @return
+ */
+static AstNode* ParsePrimary() {
+  if (Consume(cur, "(")) {
+    AstNode* ast = ParseExpr();
+    Skip(cur, ")");
+    return ast;
+  } else if (cur->type == TK_Identifier) {
+    if (FindVar(cur) != NotFound) {
+      Obj* obj = LookUpVar(cur);
+      return new AstNode(SM_Var, obj);
+    }
+    else
+      ThrowError(cur, UnknownIdentifier);
+  } else if (cur->type == TK_Int || cur->type == TK_Real) {
+    AstNode* ast = new AstNode(SM_Const, nullptr, nullptr);
+    if (cur->type == TK_Int) {
+      ast->type = Tp_Int;
+      ast->eval.int_num = cur->int_num;
+    } else {
+      ast->type = Tp_Real;
+      ast->eval.real_num = cur->real_num;
+    }
+    cur = cur->nxt;
+    return ast;
+  }
+}
+
+/**
+ * postfix = ident "(" func-args ")" postfix-tail* | primary postfix-tail*
+ * postfix-tail = "["expr"]" | "("func-args")" | "++" | "--"
+ */
+static AstNode* ParsePostfix() {
+  AstNode* ast = ParsePrimary();
+  while (true) {
+    if (Consume(cur, "[")) {
+      ParseExpr();
+      Skip(cur, "]");
+    } else if (Consume(cur, "(")) {
+      ThrowError(cur, NotSupported);
+    } else if (Consume(cur, "++")) {
+      ast = new AstNode(SM_Inc, ast, nullptr);
+    } else if (Consume(cur, "--")) {
+      ast = new AstNode(SM_Dec, ast, nullptr);
+    } else
+      break;
+  }
+  return ast;
+}
+
+/**
+ * unary = "!"|"-" unary | postfix
+ */
+static AstNode* ParseUnary() {
+  if (Consume(cur, "!"))
+    return new AstNode(SM_LogNot, ParseUnary(), nullptr);
+  else if (Consume(cur, "-"))
+    return new AstNode(SM_Neg, ParseUnary(), nullptr);
+  return ParsePostfix();
+}
+
+/**
+ * mul = unary ("*"|"/"|"%" unary)*
+ */
+static AstNode* ParseMul() {
+  struct AstNode* ast = ParseUnary();
+  while (true) {
+    if (Consume(cur, "*"))
+      ast = new AstNode(SM_Mul, ast, ParseUnary());
+    else if (Consume(cur, "/"))
+      ast = new AstNode(SM_Div, ast, ParseUnary());
+    else if (Consume(cur, "%"))
+      ast = new AstNode(SM_Mod, ast, ParseUnary());
+    else
+      break;
+  }
+  return ast;
+}
+/**
+ * add = mul ("+"|"-" mul)*
+ * @return
+ */
+static AstNode* ParseAdd() {
+  AstNode* ast = ParseMul();
+  while (true) {
+    if (Consume(cur, "+"))
+      ast = new AstNode(SM_Add, ast, ParseMul());
+    else if (Consume(cur, "-"))
+      ast = new AstNode(SM_Sub, ast, ParseMul());
+    else
+      break;
+  }
+  return ast;
+}
+
+/**
+ * relation = add ("<"|">"|"<="|">=" add)*
+ * @return
+ */
+static AstNode* ParseRelation() {
+  struct AstNode* ast = ParseAdd();
+  while (true) {
+    if (Consume(cur, "<"))
+      return new AstNode(SM_Lt, ast, ParseAdd());
+    else if (Consume(cur, ">"))
+      return new AstNode(SM_Gt, ast, ParseAdd());
+    else if (Consume(cur, "<="))
+      return new AstNode(SM_Le, ast, ParseAdd());
+    else if (Consume(cur, ">="))
+      return new AstNode(SM_Ge, ast, ParseAdd());
+    else
+      break;
+  }
+  return ast;
+}
+
+/**
+ * equality = relation ("=="|"!=" relation)*
+ * @return
+ */
+static AstNode* ParseEquality() {
+  struct AstNode* ast = ParseRelation();
+  while (true) {
+    if (Consume(cur, "=="))
+      ast = new AstNode(SM_Equal, ast, ParseRelation());
+    else if (Consume(cur, "!="))
+      ast = new AstNode(SM_nEqual, ast, ParseRelation());
+    else
+      break;
+  }
+  return ast;
+}
+
+/**
+ * logand = equality ("&&" equality)*
+ */
+static AstNode* ParseLogAnd() {
+  struct AstNode* ast = ParseEquality();
+  while (Consume(cur, "&&")) ast = new AstNode(SM_LogAnd, ast, ParseEquality());
+  return ast;
+}
+/**
+ * logor = logand (|| logand)*
+ * @return
+ */
+static AstNode* ParseLogOr() {
+  struct AstNode* ast = ParseLogAnd();
+  while (Consume(cur, "||")) ast = new AstNode(SM_LogOr, ast, ParseLogAnd());
+  return ast;
+}
+
+/**
+ * assign = logor (assign-op assign) ?
+ */
+static AstNode* ParseAssign() {
+  struct AstNode* lhs = ParseLogOr();
+  if (Consume(cur, "="))
+    return new AstNode(SM_Assign, lhs, ParseAssign());
+  else if (Consume(cur, "*="))
+    return new AstNode(SM_Assign, lhs, new AstNode(SM_Mul, lhs, ParseAssign()));
+  else if (Consume(cur, "/="))
+    return new AstNode(SM_Assign, lhs, new AstNode(SM_Div, lhs, ParseAssign()));
+  else if (Consume(cur, "+="))
+    return new AstNode(SM_Assign, lhs, new AstNode(SM_Add, lhs, ParseAssign()));
+  else if (Consume(cur, "-="))
+    return new AstNode(SM_Assign, lhs, new AstNode(SM_Sub, lhs, ParseAssign()));
+  return lhs;
+}
+
+/**
+ * expr = assign ("," expr)?
  * @return
  */
 static AstNode* ParseExpr() {
-
+  struct AstNode* ast = ParseAssign();
+  if (Consume(cur, ",")) return new AstNode(SM_Comma, ast, ParseExpr());
+  return ast;
 }
 
 static AstNode* ParseExprStmt() {
-  if (Equal(cur_tk, ";")) return nullptr;
-  ParseExpr();
+  if (Equal(cur, ";")) return nullptr;
+  AstNode* ast = ParseExpr();
+  Skip(cur, ";");
+  return ast;
 }
 
 /**
@@ -112,71 +263,50 @@ static AstNode* ParseExprStmt() {
  * @return
  */
 static AstNode* ParseStmt() {
-  if (Consume(cur_tk, ";"))
-    return nullptr;
-
-  AstNode *ast = nullptr;
-  if (Consume(cur_tk, "return")) {
-    ast = new AstNode;
+  if (Consume(cur, ";")) return nullptr;
+  AstNode* ast = nullptr;
+  if (Consume(cur, "return")) {
+    ast = new AstNode(SM_Return);
     ast->sem = SM_Return;
     ast->ret = ParseExpr();
-    Skip(cur_tk, ";");
+    Skip(cur, ";");
     return ast;
-  }
-
-  if (Consume(cur_tk, "if")) {
-    cur_tk = cur_tk->nxt;
-    Skip(cur_tk, "(");
-    ast = new AstNode;
+  } else if (Consume(cur, "if")) {
+    Skip(cur, "(");
+    ast = new AstNode(SM_If);
     ast->cond = ParseExpr();
-    Skip(cur_tk, ")");
+    Skip(cur, ")");
     ast->then = ParseStmt();
-    if(Consume(cur_tk, "else")) {
-      ast->else_then = ParseStmt();
-    }
-  }
-
-  if (Consume(cur_tk, "for")) {
-    Skip(cur_tk, "(");
+    if (Consume(cur, "else")) ast->else_then = ParseStmt();
+    return ast;
+  } else if (Consume(cur, "for")) {
+    Skip(cur, "(");
     EnterScope();
-    AstNode* nd = new AstNode;
-    nd->init = ParseExprStmt();
-    Skip(cur_tk, ";");
-    nd->cond = ParseExpr();
-    Skip(cur_tk, ";");
-    nd->inc = ParseExpr();
-    Skip(cur_tk, ")");
-    nd->then = ParseStmt();
+    ast = new AstNode(SM_For);
+    ast->init = ParseExprStmt();
+    ast->cond = ParseExpr();
+    Skip(cur, ";");
+    ast->inc = ParseExpr();
+    Skip(cur, ")");
+    ast->then = ParseStmt();
     LeaveScope();
-  }
-
-  if (Consume(cur_tk, "{")) {
-    ParseStmts();
-  }
+    return ast;
+  } else if (Consume(cur, "{"))
+    return ParseStmts();
+  else
+    return ParseExprStmt();
 }
 
 static AstNode* ParseStmts() {
   EnterScope();
-  while (!Equal(cur_tk, "}")) {
-    ParseStmt();
+  AstNode* ast = new AstNode(SM_Block);
+  while (!Consume(cur, "}")) {
+    AstNode* stmt = ParseStmt();
+    stmt->nxt = ast->nxt;
+    ast->nxt = stmt;
   }
   LeaveScope();
-}
-
-static void ParseFunction() {
-  Type *tp = ParseDeclarator();
-  if (tp->type != Tp_Function)
-    ThrowError(cur_tk, NotFunction);
-  Skip(cur_tk, "{");
-  CreateParams(tp);
-  EnterScope();
-  while (!Equal(cur_tk, "}")) {
-    if (cur_tk->type == TK_Eof)
-      ThrowMsgError(cur_tk, TokenExpected, "}");
-    AstNode* nd = ParseExpr();
-  }
-  Skip(cur_tk, "}");
-  LeaveScope();
+  return ast;
 }
 
 /**
@@ -184,32 +314,126 @@ static void ParseFunction() {
  */
 static AstNode* ParseTriplets() {
   AstNode* ast = new AstNode;
-  Skip(cur_tk, "{");
+  Skip(cur, "{");
   ParseExpr();
-  Skip(cur_tk, ",");
+  Skip(cur, ",");
   ParseExpr();
-  Skip(cur_tk, ",");
+  Skip(cur, ",");
   ParseExpr();
-  Skip(cur_tk, ",");
+  Skip(cur, ",");
 }
 
+/**
+ * declare-spm = "spm""<" uint "," uint ">" declarator ";"
+ * declare-vec = "vec""<" uint ">" declarator ";"
+ */
+static AstNode* ParseMatVecDeclaration() {
+  bool is_spm = false, is_vec = false;
+  if (Consume(cur, "spm"))
+    is_spm = true;
+  else if (Consume(cur, "vec"))
+    is_vec = true;
+  uint m, n;
+  if (is_spm || is_vec) {
+    Skip(cur, "<");
+    if (cur->type != TK_Int || cur->int_num <= 0)
+      ThrowError(cur, DimShouldBePosInt);
+    m = cur->int_num;
+    cur = cur->nxt;
+    if (is_vec)
+      Skip(cur, ">");
+    else {
+      Skip(cur, ",");
+      if (cur->type != TK_Int || cur->int_num <= 0)
+        ThrowError(cur, DimShouldBePosInt);
+      n = cur->int_num;
+      Skip(cur, ">");
+    }
+  }
+  Obj* obj = ParseDeclarator();
+  Skip(cur, ";");
+}
+
+static void AddScope(Obj* obj) {
+  if (cur_scope->vars == nullptr)
+    cur_scope->vars = new HashMap<64, Obj*>;
+  cur_scope->vars->insert(obj->name->loc, obj->name->len, obj);
+}
+
+static FindState FindVar(Token* tk) {
+  ull hash_code = cur_scope->vars->hash(tk->loc, tk->len);
+  for (Scope* scope = cur_scope; scope; scope = scope->nxt) {
+    if (scope->vars == nullptr) continue;
+    if (scope->vars->FindByHash(hash_code)) {
+      if (scope == cur_scope) return FoundAtCurrentScope;
+      else return FoundAtOuterScope;
+    }
+  }
+  return NotFound;
+}
+
+static Obj* LookUpVar(Token* tk) {
+  ull hash_code = cur_scope->vars->hash(tk->loc, tk->len);
+  for (Scope* scope = cur_scope; scope; scope = scope->nxt) {
+    if (scope->vars == nullptr) continue;
+    if (scope->vars->FindByHash(hash_code))
+      return scope->vars->QueryByHash(hash_code);
+  }
+  return nullptr;
+}
+
+/**
+ * declaration = declare-var | declare-spm | declare-vec
+ * declare-var = "var"(declarator ("=" expr)?("," declarator("=" expr)?)*)?";"
+ */
+static AstNode* ParseDeclaration() {
+  if (Equal(cur, "spm") || Equal(cur, "vec")) return ParseMatVecDeclaration();
+  Skip(cur, "var");
+  uint decl_cnt = 0;
+  AstNode* ast = nullptr;
+  while (!Equal(cur, ";")) {
+    if(decl_cnt > 0) Skip(cur, ",");
+    decl_cnt++;
+    Obj* obj = ParseDeclarator();
+    AddScope(obj);
+    if (Consume(cur, "=")) {
+      AstNode* decl = ParseExpr();
+      decl = new AstNode(SM_Assign, new AstNode(SM_Var, obj), decl);
+      if (decl_cnt == 0) ast = decl;
+      else ast = new AstNode(SM_Comma, ast, decl);
+    }
+  }
+  Skip(cur, ";");
+  if (decl_cnt == 0) ThrowError(cur, EmptyDeclarationStmt);
+  return ast;
+}
+
+/**
+ * prog = (declaration | stmt) *
+ * @return
+ */
 static AstNode* ParseProg() {
   EnterScope();
-  if (Consume(cur_tk, "{")) {
-    while(cur_tk->type != TK_Eof) {
-      //    if (Consume(cur_tk, "func")) {
-      //      // we parse it as a function definition
-      //      ParseFunction();
-      //    }
-      ParseStmt();
+  global = cur_scope;
+  AstNode* ast = new AstNode(SM_Block);
+  AstNode* tail = ast;
+  while (cur->type != TK_Eof) {
+    if (Equal(cur, "var") || Equal(cur, "spm") || Equal(cur, "vec")) {
+      AstNode* decl = ParseDeclaration();
+      if (decl == nullptr) continue;
+      tail->nxt = decl;
+      tail = decl;
+      continue;
     }
-  } else
-    ThrowMsgError(cur_tk, TokenExpected, "{");
+    AstNode* stmt = ParseStmt();
+    tail->nxt = stmt;
+    tail = stmt;
+  }
   LeaveScope();
+  return ast;
 }
 
-AstNode* Parse(Token *head) {
-  cur_tk = head;
-  cur_scope = global = new Scope();
+AstNode* Parse(Token* head) {
+  cur = head;
   return ParseProg();
 }

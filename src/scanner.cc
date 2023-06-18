@@ -14,16 +14,29 @@ static uint line_no = 1;
 static char* buffer;
 static size_t buffer_size = kPgSize;
 
+static bool IsReserved(Token* tk) {
+  static char reserved_list[][10] = {
+      "var", "if", "else", "for", "spm", "vec", "return", "break", "continue"
+  };
+  static GeneralHashMap<24, 1331, uint> reserved_hash;
+  if (reserved_hash.empty()) {  // init reserved_hash
+    for (uint i = 0; i < sizeof(reserved_list) / (sizeof(char) * 10); i++)
+      reserved_hash.insert(reserved_list[i], i);
+  }
+  return reserved_hash.find(tk->loc, tk->len);
+}
+
 /**
  * identifier = alpha(alpha | digit)*
  * @return
  */
-void ReadIdentifier(Token* tk) {
+static void ReadIdentifierOrReserved(Token* tk) {
   while (isalpha(*read_ptr) || isdigit(*read_ptr)) {
     read_ptr++;
     tk->len++;
   }
-  tk->type = TK_Identifier;
+  if (IsReserved(tk)) tk->type = TK_Reserved;
+  else tk->type = TK_Identifier;
 }
 
 static int ch2hex(char c) {
@@ -144,11 +157,13 @@ void ReadNumber(Token* tk) {
     read_real = true;
   }
   tk->len = read_ptr - cur;
-  tk->type = TK_Number;
-  if (read_real)
+  if (read_real) {
     tk->real_num = Pow10((static_cast<Real>(int_num) + real_part), exp_num);
-  else
+    tk->type = TK_Real;
+  } else {
+    tk->type = TK_Int;
     tk->int_num = int_num;
+  }
 }
 
 void ReadPunct(Token* tk) {
@@ -156,7 +171,6 @@ void ReadPunct(Token* tk) {
       "<<=", ">>=", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=",
       "++",  "--",  "%=", "&=", "|=", "^=", "&&", "||", "<<", ">>",
   };
-
   static GeneralHashMap<24, 1331, uint> punct_hash;
   if (punct_hash.empty()) {  // init punct_hash
     for (uint i = 0; i < sizeof(punct_list) / (sizeof(char) << 2); i++)
@@ -182,8 +196,9 @@ static Token* ReadToken() {
   tk->offset = read_ptr - begin_of_line;
   tk->loc = read_ptr;
   char c = *read_ptr;
-  if (isalpha(c))
-    ReadIdentifier(tk);
+  if (isalpha(c)) {
+    ReadIdentifierOrReserved(tk);
+  }
   else if (isdigit(c))
     ReadNumber(tk);
   else if (ispunct(c))
@@ -233,13 +248,11 @@ size_t ReadCode(const char* file) {
 }
 
 Token* Tokenize() {
-  Token* tk = Scan();
-  auto tail = new Token();
-  tail->nxt = tk;
-  tail->line_no = line_no;
-  head = tail;
+  begin_of_line = buffer;
+  head = Scan();
+  Token* tail = head;
   while (tail->type != TK_Eof) {
-    tk = Scan();
+    Token* tk = Scan();
     tail->nxt = tk;
     tail = tk;
   }

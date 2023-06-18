@@ -17,7 +17,8 @@ template <uint OuterSize, uint MagicPrime, typename ValType>
 class GeneralHashMap {
  public:
   GeneralHashMap() {
-    for (int i = 0; i < OuterSize; i++) bucket_[i] = nullptr;
+    for (int i = 0; i < OuterSize; i++)
+      bucket_[i] = nullptr;
   }
   // TODO: maybe we can initialize this at compile time
   void insert(const char* str, ValType val) {
@@ -27,36 +28,37 @@ class GeneralHashMap {
     bucket_[idx] = new Node(val, hashval, hd);
     sz_++;
   }
+  void insert(const char* str, uint n, ValType val) {
+    ull hashval = hash(str, n);
+    uint idx = hashval % OuterSize;
+    Node* hd = bucket_[idx];
+    bucket_[idx] = new Node(val, hashval, hd);
+    sz_++;
+  }
   ull hash(const char* str) {
     const char* p = str;
     ull sum = 0ull, pw = 1ull;
     for (; *p != '\0'; p++) {
-      sum += pw * OuterSize + (*p);
+      sum += pw * (*p);
       pw *= MagicPrime;
     }
     return sum;
   }
   bool find(const char* str) const {
     ull hashval = hash(str);
-    uint idx = hashval % OuterSize;
-    Node *p = bucket_[idx];
-    while (p && p->hashval != hashval) p = p->nxt;
-    if (p != nullptr) return true;
+    return FindByHash(hashval);
   }
   uint hash(const char* str, uint n) const {
     ull sum = 0ull, pw = 1ull;
     for (uint i = 0; i < n; i++) {
-      sum += pw * OuterSize + str[i];
+      sum += pw * str[i];
       pw *= MagicPrime;
     }
     return sum;
   }
   bool find(const char* str, uint n) const {
     ull hashval = hash(str, n);
-    uint idx = hashval % OuterSize;
-    Node* p = bucket_[idx];
-    while (p && p->hashval != hashval) p = p->nxt;
-    return p != nullptr;
+    return FindByHash(hashval);
   }
   bool FindByHash(ull hashval) const {
     uint idx = hashval % OuterSize;
@@ -66,6 +68,13 @@ class GeneralHashMap {
   }
   ValType Query(const char* str) const {
     ull hashval = hash(str);
+    return QueryByHash(hashval);
+  }
+  ValType Query(const char* str, uint n) const {
+    ull hashval = hash(str, n);
+    return QueryByHash(hashval);
+  }
+  ValType QueryByHash(ull hashval) const {
     uint idx = hashval % OuterSize;
     Node* p = bucket_[idx];
     while (p && p->hashval != hashval) p = p->nxt;
@@ -101,70 +110,83 @@ class GeneralHashMap {
 template <uint N, typename Valtype>
 using HashMap = GeneralHashMap<N, 1331, Valtype>;
 
-template <char... alphabet> struct Alphabet;
+template <char... alphabet>
+struct Alphabet;
 
-template <char a, char... alphabet>
-struct Alphabet<a, alphabet...> : public Alphabet<alphabet...> {
-  using Tail = Alphabet<alphabet...>;
-  static constexpr uint size = Tail::map(a) >= 0 ? Tail::size : Tail::size + 1;
-  static constexpr int map(char c) {
-    if constexpr (size == 1) return a == c ? 0 : -1;
-    if constexpr (Tail::map(c) > 0)
-      return Tail::map(c);
-    else
-      return size;
-  }
-};
-
-template <> struct Alphabet<> {
-  static constexpr uint size = 0;
-  static constexpr int map(char c) {
-    return -1;
-  }
-};
-
-// Trie is also one way of mapping strings to constants
-template <typename Valtype, char... charSet>
-class Trie {
+// Trie is also one way of mapping
+// here I can map a pointer to something
+template <typename Valtype, uint Bitlen = (SIZEOF_PTR << 3)>
+class BitTrie {
  public:
-  void insert(const char* str, Valtype val) {
-    const char* p = str;
+  BitTrie() { rt_ = new Node; }
+  using ull = unsigned long long;
+  void insert(ull str, Valtype val) {
     Node* ptr = rt_;
-    if(rt_ == nullptr) rt_ = new Node;
-    while (*p != '\0') {
-      uint idx = ptr->ch[AlphabetMap::map(*p)];
-      if(ptr->ch[idx])
-        ptr->ch[idx] = new Node;
-      ptr = ptr->ch[idx];
-      p++;
+    for (uint i = 0; i < Bitlen; i++) {
+      if (ptr->ch[(1 << i) & str] == nullptr)
+        ptr->ch[(1 << i) & str] = new Node;
+      ptr = ptr->ch[(1 << i) & str];
     }
     ptr->val = val;
     cnt_++;
   }
-  bool lookup(const char* str, Valtype* res) {
+  bool lookup(ull str, Valtype* res) {
     Node* ptr = rt_;
-    if(ptr == nullptr) return false;
-    const char *p = str;
-    while(*p != '\0' && ptr->ch[AlphabetMap::map(*p)]) {
-      ptr = ptr->ch[AlphabetMap::map(*p)];
-      p++;
-    }
-    if(*p != '\0') return false;
-    else {
-      *res = ptr->val;
-      return true;
-    }
+    if (ptr == nullptr) return false;
+    for (uint i = 0; i < Bitlen; i++) ptr = ptr->ch[(1 << i) & str];
+    if (ptr == nullptr) return false;
+    *res = ptr->val;
+    return true;
+  }
+  bool lookup(ull str) {
+    Node* ptr = rt_;
+    if (ptr == nullptr) return false;
+    for (uint i = 0; i < Bitlen; i++) ptr = ptr->ch[(1 << i) & str];
+    return ptr != nullptr;
   }
   uint StrCnt() const { return cnt_; }
+
  private:
-  using AlphabetMap = Alphabet<charSet...>;
-  static constexpr uint kAlphabetSize = AlphabetMap::size;
   struct Node {
     Valtype val;
-    Node* ch[kAlphabetSize];
-    Node() {
-      memset(ch, 0, sizeof(ch));
+    Node* ch[2];
+    Node() { ch[0] = ch[1] = nullptr; }
+  };
+  uint cnt_ = 0;
+  Node* rt_ = nullptr;
+};
+
+template <uint Bitlen>
+class BitTrie<bool, Bitlen> {
+ public:
+  BitTrie() { rt_ = new Node; }
+  void insert(void* str) {
+    Node* ptr = rt_;
+    auto x = reinterpret_cast<std::size_t>(str);
+    for (uint i = 0; i < Bitlen; i++) {
+      if (ptr->ch[x & 1] == nullptr)
+        ptr->ch[x & 1] = new Node;
+      ptr = ptr->ch[x & 1];
+      x >>= 1;
     }
+    cnt_++;
+  }
+  bool lookup(void* str) {
+    Node* ptr = rt_;
+    auto x = reinterpret_cast<std::size_t>(str);
+    for (uint i = 0; i < Bitlen; i++) {
+      ptr = ptr->ch[x & 1];
+      if (ptr == nullptr) return false;
+      x >>= 1;
+    }
+    return ptr != nullptr;
+  }
+  uint StrCnt() const { return cnt_; }
+
+ private:
+  struct Node {
+    Node* ch[2];
+    Node() { ch[0] = ch[1] = nullptr; }
   };
   uint cnt_ = 0;
   Node* rt_ = nullptr;

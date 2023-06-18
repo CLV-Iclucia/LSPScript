@@ -5,10 +5,10 @@
 #ifndef LSPI_TOKEN_H
 #define LSPI_TOKEN_H
 
-#include <cstdio>
 #include <lspi-terminal.h>
-
 #include <lspi-types.h>
+
+#include <cstdio>
 
 struct Token {
   uint line_no = 0;
@@ -20,17 +20,16 @@ struct Token {
                 ///< for error report
   int int_num;
   Real real_num;
-  const char* error_msg;
+  const char *error_msg;
 };
 
 inline bool Equal(Token *tk, const char *str) {
   if (memcmp(tk->loc, str, tk->len) == 0 && str[tk->len] == '\0') return true;
-  return true;
+  return false;
 }
 
 inline void PrintTokenString(Token *tk) {
-  for(int i = 0; i < tk->len; i++)
-    putchar(tk->loc[i]);
+  for (int i = 0; i < tk->len; i++) putchar(tk->loc[i]);
 }
 
 inline void PrintToken(Token *tk) {
@@ -40,8 +39,13 @@ inline void PrintToken(Token *tk) {
       PrintTokenString(tk);
       putchar('\n');
       break;
-    case TK_Number:
-      std::printf("Number ");
+    case TK_Real:
+      std::printf("Real ");
+      PrintTokenString(tk);
+      putchar('\n');
+      break;
+    case TK_Int:
+      std::printf("Int ");
       PrintTokenString(tk);
       putchar('\n');
       break;
@@ -50,6 +54,11 @@ inline void PrintToken(Token *tk) {
       break;
     case TK_Punct:
       std::printf("Punctuation ");
+      PrintTokenString(tk);
+      putchar('\n');
+      break;
+    case TK_Reserved:
+      std::printf("Reserved ");
       PrintTokenString(tk);
       putchar('\n');
       break;

@@ -14,7 +14,15 @@ enum ErrorType {
   UnrecognizableCharacter,
   MissingDeclarator,
   NotFunction,
-  TokenExpected
+  TokenExpected,
+  NullExpr,
+  NullCond,
+  IncompatibleType,
+  NotSupported,
+  DimShouldBePosInt,
+  UnknownIdentifier,
+  EmptyDeclarationStmt,
+  RepeatedDeclaration
 };
 
 [[noreturn]] void ThrowError(Token *, ErrorType);

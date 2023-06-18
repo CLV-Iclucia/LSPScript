@@ -6,7 +6,7 @@ extern size_t ReadCode(const char*);
 extern Token* Tokenize();
 extern AstNode* Parse(Token *head);
 extern void VisualizeAst(AstNode* ast, const char* output_path, const char* prog_name);
-extern void PrintAst(AstNode *ast, const char *path);
+extern void PrintTokenStream();
 int main(int argc, char** argv) {
   if (argc < 2) {
     std::printf("Lspi command line launched.\n");
@@ -24,23 +24,24 @@ int main(int argc, char** argv) {
     uint arg = 2;
     if (std::strcmp(argv[arg], "--visualize-token-stream") == 0) {
       arg++;
-      std::printf("Generating graph file for token stream...\n");
+      std::printf("Generating graphviz file for token stream...\n");
 //      if (arg < argc)
 //        VisualizeTokenStream(head, argv[1]);
 //      else VisualizeTokenStream(head, argv[arg++]);
       std::printf("Visualizing token stream done.\n");
     }
+    PrintTokenStream();
     std::printf("---------------------------------------------------------------------------\n");
     std::printf("Start parsing...\n");
     AstNode *ast = Parse(head);
     std::printf("Parsing done.\n");
     if (std::strcmp(argv[arg], "--visualize-ast") == 0) {
       arg++;
-      if (arg < argc)
-        VisualizeAst(ast, argv[1]);
-      else VisualizeAst(ast, argv[arg++]);
+      std::printf("Generating graphviz file for abstract syntax tree...\n");
+      VisualizeAst(ast, "./output.dot", argv[1]);
+      std::printf("Visualizing abstract syntax tree done.\n");
     }
     std::printf("---------------------------------------------------------------------------\n");
-    std::printf("Start executing...\n");
+  //  std::printf("Start executing...\n");
   }
 }

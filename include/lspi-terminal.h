@@ -13,47 +13,13 @@ const uint kMaxTokenLength = 64;
 
 enum TokenType {
   Undef,
-  // Basic symbols
-  Ast,     // *
-  Lslash,  // /
-  Perc,    // %
-  And,     // &
-  Vbar,    // |
-  Plus,    // +
-  Minus,   // -
-  Eql,     // ==
-  Sharp,   // #
-  Lt,      // <
-  Le,      // <=
-  Gt,      // >
-  Ge,      // >=
-  Dot,     // .
-  Comma,   // ,
-  Colon,   // :
-  Rrbra,   // )
-  Rsbra,   // ]
-  Rcbra,   // }
-  Lrbra,   // (
-  Lsbra,   // [
-  Lcbra,   // {
-  Tilde,   // ~
-  Bang,    // !
-  Assign,  // =
-  Scolon,  // ;
-
-  // Some reserved words
-  If,     // if
-  Else,   // else
-  While,  // while
-  For,    // for
-  Const,  // const
-
   // Attributes
   TK_Identifier,
-  TK_Number,
+  TK_Int,
+  TK_Real,
   TK_Punct,
-  Module,
-  TK_Eof
+  TK_Eof,
+  TK_Reserved,
 };
 
 

@@ -22,19 +22,46 @@ void ThrowError(Token* tk, ErrorType error) {
       std::printf("Failed to open memory stream. Stop compiling.\n");
       exit(-1);
     case UnrecognizableCharacter:
-      std::printf("Unrecognizable character");
+      std::printf("Unrecognizable character.\n");
       break;
     case MissingDeclarator:
-      std::printf("Missing declarator");
+      std::printf("Missing declarator.\n");
       break;
     case NotFunction:
-      std::printf("Not a function");
+      std::printf("Not a function.\n");
       break;
     case TokenExpected:
-      std::printf("%s expected here", tk->error_msg);
+      std::printf("%s expected here.\n", tk->error_msg);
       break;
-    default:
-      std::printf("Compile Error.\n");
+    case NullExpr:
+      std::printf("Null expression.\n");
+      break;
+    case NullCond:
+      std::printf("Null condition expression.\n");
+      break;
+    case IncompatibleType:
+      std::printf("Incompatible type.\n");
+      break;
+    case NotSupported:
+      std::printf("This syntax has not been supported yet.\n");
+      break;
+    case DimShouldBePosInt:
+      std::printf("Dimensions in declarations should be positive integers.\n");
+      break;
+    case UnknownIdentifier:
+      std::printf("Unknown identifier \"");
+      for (uint i = 0; i < tk->len; i++)
+        putchar(tk->loc[i]);
+      std::printf("\".\n");
+      break;
+    case EmptyDeclarationStmt:
+      std::printf("An empty declaration statement is not allowed.\n");
+      break;
+    case RepeatedDeclaration:
+      std::printf("Repeated declaration of identifier \"");
+      for (uint i = 0; i < tk->len; i++)
+        putchar(tk->loc[i]);
+      std::printf("\".\n");
       break;
   }
   std::printf("%d| ", tk->line_no);
