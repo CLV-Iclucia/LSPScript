@@ -25,6 +25,10 @@ enum ErrorType {
   RepeatedDeclaration,
   LvalueExpected,
   ComplexTypeInitNotAllowed,
+  CannotHappen,
+  InvalidAssignment,
+  InvalidOperationForScalarMat,
+  InvalidOperationForMatrix,
 };
 
 [[noreturn]] void ThrowError(Token *, ErrorType);

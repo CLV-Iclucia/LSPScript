@@ -23,20 +23,16 @@ int main(int argc, char** argv) {
     Token *head = Tokenize();
     std::printf("Tokenizing done.\n");
     uint arg = 2;
-    if (std::strcmp(argv[arg], "--visualize-token-stream") == 0) {
+    if (argc > 2 && std::strcmp(argv[arg], "--visualize-token-stream") == 0) {
       arg++;
       std::printf("Generating graphviz file for token stream...\n");
-//      if (arg < argc)
-//        VisualizeTokenStream(head, argv[1]);
-//      else VisualizeTokenStream(head, argv[arg++]);
       std::printf("Visualizing token stream done.\n");
     }
-    PrintTokenStream();
     std::printf("---------------------------------------------------------------------------\n");
     std::printf("Start parsing...\n");
     AstNode *ast = Parse(head);
     std::printf("Parsing done.\n");
-    if (std::strcmp(argv[arg], "--visualize-ast") == 0) {
+    if (argc > 2 && std::strcmp(argv[arg], "--visualize-ast") == 0) {
       arg++;
       std::printf("Generating graphviz file for abstract syntax tree...\n");
       VisualizeAst(ast, "./output.dot", argv[1]);

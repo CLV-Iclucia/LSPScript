@@ -78,7 +78,7 @@ class GeneralHashMap {
     uint idx = hashval % OuterSize;
     Node* p = bucket_[idx];
     while (p && p->hashval != hashval) p = p->nxt;
-    if (p) return p->val;
+    return p->val;
   }
   ~GeneralHashMap() {
     for (int i = 0; i < OuterSize; i++) {

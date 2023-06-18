@@ -10,8 +10,6 @@
 static const uint kHashBucketSize = 1024;
 static Token* cur = nullptr;
 static Scope* cur_scope = nullptr;
-static Scope* global = nullptr;
-static Scope* local = nullptr;
 
 static AstNode* ParseExpr();
 static AstNode* ParseStmt();
@@ -312,19 +310,45 @@ static AstNode* ParseStmts() {
 }
 
 /**
- * Triplet = "{"expr"," expr"," expr"}"
+ * triplet = "{" assign "," assign "," assign "}"
  */
-static AstNode* ParseTriplets() {
-  AstNode* ast = new AstNode;
+static AstNode* ParseTriplet() {
+  AstNode* ast = new AstNode(SM_Triplet);
   Skip(cur, "{");
-  ParseExpr();
+  ast->lhs = ParseAssign();
   Skip(cur, ",");
-  ParseExpr();
+  ast->rhs = ParseAssign();
   Skip(cur, ",");
-  ParseExpr();
-  Skip(cur, ",");
+  ast->ret = ParseAssign();
+  Skip(cur, "}");
+  return ast;
 }
 
+/**
+ * triplet-list = "{" triplet* "}"
+ * @return
+ */
+static AstNode* ParseTripletList() {
+  AstNode* ast = new AstNode(SM_TripletList);
+  Skip(cur, "{");
+  AstNode* tail = ast;
+  uint cnt = 0;
+  while (!Equal(cur, "}")) {
+    if (cnt) Skip(cur, ",");
+    tail->nxt = ParseTriplet();
+    tail = tail->nxt;
+    cnt++;
+  }
+  // I use this to save the number of triplets in this list.
+  ast->eval.int_num = static_cast<int>(cnt);
+  Skip(cur, "}");
+  return ast;
+}
+
+static void AddScope(Obj* obj) {
+  if (cur_scope->vars == nullptr) cur_scope->vars = new HashMap<64, Obj*>;
+  cur_scope->vars->insert(obj->name->loc, obj->name->len, obj);
+}
 /**
  * declare-spm = "spm""<" uint "," uint ">" declarator ("=" triplet-list)?";"
  * declare-vec = "vec""<" uint ">" declarator ("=" scalar-list)?";"
@@ -335,33 +359,41 @@ static AstNode* ParseMatVecDeclaration() {
     is_spm = true;
   else if (Consume(cur, "vec"))
     is_vec = true;
-  uint m, n;
+  uint m = 0, n = 0;
   if (is_spm || is_vec) {
     Skip(cur, "<");
     if (cur->type != TK_Int || cur->int_num <= 0)
       ThrowError(cur, DimShouldBePosInt);
     m = cur->int_num;
     cur = cur->nxt;
-    if (is_vec)
-      Skip(cur, ">");
-    else {
+    if (is_vec) Skip(cur, ">");
+    if (is_spm) {
       Skip(cur, ",");
       if (cur->type != TK_Int || cur->int_num <= 0)
         ThrowError(cur, DimShouldBePosInt);
       n = cur->int_num;
+      cur = cur->nxt;
       Skip(cur, ">");
     }
   }
-  Obj* obj = ParseDeclarator();
-  if (Consume(cur, "=")) {
 
+  Obj* obj = ParseDeclarator();
+  if (is_spm) {
+    obj->type = Tp_Spm;
+    obj->eval.spm = new spmx::SparseMatrixXd(m, n);
+    AddScope(obj);
+  } else
+    ThrowError(cur, NotSupported);
+  AstNode* ast = nullptr;
+  if (Consume(cur, "=")) {
+    if (Equal(cur, "{"))
+      ast =
+          new AstNode(SM_Assign, new AstNode(SM_Var, obj), ParseTripletList());
+    else
+      ast = new AstNode(SM_Assign, new AstNode(SM_Var, obj), ParseAssign());
   }
   Skip(cur, ";");
-}
-
-static void AddScope(Obj* obj) {
-  if (cur_scope->vars == nullptr) cur_scope->vars = new HashMap<64, Obj*>;
-  cur_scope->vars->insert(obj->name->loc, obj->name->len, obj);
+  return ast;
 }
 
 static FindState FindVar(Token* tk) {
@@ -423,7 +455,6 @@ static AstNode* ParseDeclaration() {
  */
 static AstNode* ParseProg() {
   EnterScope();
-  global = cur_scope;
   AstNode* ast = new AstNode(SM_Block);
   AstNode* tail = ast;
   while (cur->type != TK_Eof) {

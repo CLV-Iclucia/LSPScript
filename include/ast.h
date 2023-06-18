@@ -10,6 +10,7 @@
 #include <variant>
 
 #include "basic.h"
+#include "sparse-matrix.h"
 
 enum Semantic {
   SM_Comma,
@@ -36,7 +37,9 @@ enum Semantic {
   SM_Inc,
   SM_Dec,
   SM_Const,
-  SM_Var
+  SM_Var,
+  SM_TripletList,
+  SM_Triplet
 };
 
 struct AstNode {
@@ -55,11 +58,9 @@ struct AstNode {
   union Eval{
     Real real_num;
     int int_num = 0;
-//    SparseMatrixXd spm;
- //   VectorXd vec;
-  }eval;
+    spmx::SparseMatrixXd* spm;
+  } eval;
   BasicType type = Tp_Undef;
-
   Obj* var = nullptr;
   Token* tk = nullptr;
 };

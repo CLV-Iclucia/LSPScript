@@ -3,9 +3,23 @@
 //
 #include <ast.h>
 #include <error-handling.h>
-#include <iostream>
-static AstNode *for_begin = nullptr, *for_cont = nullptr;
+#include <expressions.h>
+#include <sparse-matrix.h>
 
+#include <iostream>
+#include <vector>
+
+#define ASSIGN_SPM(ast, expr)                    \
+  ast->type = Tp_Spm;                            \
+  if (ast->eval.spm != nullptr) {                \
+    spmx::SparseMatrixXd& dest = *(ast->eval.spm); \
+    dest = (expr);                               \
+  } else                                         \
+    ast->eval.spm = new spmx::SparseMatrixXd(expr)
+
+static AstNode *for_begin = nullptr, *for_cont = nullptr;
+static std::vector<spmx::Triplet> t_list;
+static uint loop_dep = 0;
 void Exec(AstNode* cur);
 
 static void CheckBinary(AstNode* cur) {
@@ -46,8 +60,7 @@ Real RealScalar(AstNode* cur) {
 }
 
 void CheckLvalue(AstNode* cur) {
-  if (cur->sem != SM_Var)
-    ThrowError(cur->tk, LvalueExpected);
+  if (cur->sem != SM_Var) ThrowError(cur->tk, LvalueExpected);
 }
 
 static void ExecScalarBinary(AstNode* cur) {
@@ -83,13 +96,135 @@ static void AssignInt(Obj* obj, int int_num) {
   obj->eval.int_num = int_num;
 }
 
+void GetTripletList(AstNode* cur) {
+  if (cur->sem != SM_TripletList) ThrowError(cur->tk, CannotHappen);
+  t_list.clear();
+  t_list.reserve(cur->eval.int_num);
+  cur = cur->nxt;
+  while (cur) {
+    if (cur->sem != SM_Triplet) ThrowError(cur->tk, CannotHappen);
+    ExecIntBinary(cur);
+    Exec(cur->ret);
+    CheckScalar(cur->ret);
+    t_list.emplace_back(cur->lhs->eval.int_num, cur->rhs->eval.int_num,
+                        RealScalar(cur->ret));
+    cur = cur->nxt;
+  }
+}
+
+void ProcessAssign(AstNode* cur) {
+  CheckBinary(cur);
+  CheckLvalue(cur->lhs);
+  if (cur->rhs->sem != SM_TripletList) Exec(cur->rhs);
+  if (IsScalar(cur->rhs)) {
+    if (cur->lhs->var->type == Tp_Spm) ThrowError(cur->tk, InvalidAssignment);
+    Assign(cur->lhs->var, cur->rhs);
+    if (IsReal(cur->rhs)) SetEvalReal(cur, cur->rhs->eval.real_num);
+    if (IsInt(cur->rhs)) SetEvalReal(cur, cur->rhs->eval.int_num);
+  }
+  if (cur->rhs->sem == SM_TripletList || cur->rhs->type == Tp_Spm) {
+    if (cur->lhs->var->type != Tp_Spm) ThrowError(cur->tk, InvalidAssignment);
+    if (cur->rhs->sem == SM_TripletList) {
+      GetTripletList(cur->rhs);
+      cur->lhs->var->eval.spm->SetFromTriplets(t_list.begin(), t_list.end());
+      cur->type = Tp_Spm;
+    } else {
+      const spmx::SparseMatrixXd& r_res = *(cur->rhs->eval.spm);
+      if (cur->lhs->var->eval.spm != nullptr) {
+        spmx::SparseMatrixXd& lvar = *(cur->lhs->var->eval.spm);
+        lvar = r_res;
+      } else
+        cur->lhs->var->eval.spm =
+            new spmx::SparseMatrixXd(r_res);
+      cur->eval.spm = cur->lhs->var->eval.spm;
+    }
+  }
+}
+
+void ProcessMul(AstNode* cur) {
+  ExecBinary(cur);
+  if (IsScalar(cur->lhs) && IsScalar(cur->rhs)) {
+    if (IsInt(cur->lhs) && IsInt(cur->rhs))
+      SetEvalInt(cur, cur->lhs->eval.int_num * cur->rhs->eval.int_num);
+    else
+      SetEvalReal(cur, RealScalar(cur->lhs) * RealScalar(cur->rhs));
+  } else if (cur->rhs->type == Tp_Spm && IsScalar(cur->lhs)) {
+    const spmx::SparseMatrixXd& rhs = *(cur->rhs->eval.spm);
+    ASSIGN_SPM(cur, RealScalar(cur->lhs) * rhs);
+  } else if (cur->lhs->type == Tp_Spm && IsScalar(cur->rhs)) {
+    const spmx::SparseMatrixXd& rhs = *(cur->rhs->eval.spm);
+    ASSIGN_SPM(cur, RealScalar(cur->rhs) * rhs);
+  } else {
+    const spmx::SparseMatrixXd& lhs = *(cur->lhs->eval.spm);
+    const spmx::SparseMatrixXd& rhs = *(cur->rhs->eval.spm);
+    ASSIGN_SPM(cur, lhs * rhs);
+  }
+}
+
+void ProcessAdd(AstNode* cur) {
+  ExecBinary(cur);
+  if (IsScalar(cur->lhs) && IsScalar(cur->rhs)) {
+    if (IsInt(cur->lhs) && IsInt(cur->rhs))
+      SetEvalInt(cur, cur->lhs->eval.int_num + cur->rhs->eval.int_num);
+    else
+      SetEvalReal(cur, RealScalar(cur->lhs) + RealScalar(cur->rhs));
+  } else if (cur->lhs->type == Tp_Spm && cur->rhs->type == Tp_Spm) {
+    const spmx::SparseMatrixXd& lhs = *(cur->lhs->eval.spm);
+    const spmx::SparseMatrixXd& rhs = *(cur->rhs->eval.spm);
+    ASSIGN_SPM(cur, lhs + rhs);
+  } else
+    ThrowError(cur->tk, InvalidOperationForScalarMat);
+}
+
+void ProcessSub(AstNode* cur) {
+  ExecBinary(cur);
+  if (IsScalar(cur->lhs) && IsScalar(cur->rhs)) {
+    if (IsInt(cur->lhs) && IsInt(cur->rhs))
+      SetEvalInt(cur, cur->lhs->eval.int_num - cur->rhs->eval.int_num);
+    else
+      SetEvalReal(cur, RealScalar(cur->lhs) - RealScalar(cur->rhs));
+  } else if (cur->lhs->type == Tp_Spm && cur->rhs->type == Tp_Spm) {
+    const spmx::SparseMatrixXd& lhs = *(cur->lhs->eval.spm);
+    const spmx::SparseMatrixXd& rhs = *(cur->rhs->eval.spm);
+    ASSIGN_SPM(cur, lhs - rhs);
+  } else
+    ThrowError(cur->tk, InvalidOperationForScalarMat);
+}
+
+void ProcessDiv(AstNode* cur) {
+  ExecBinary(cur);
+  if (IsScalar(cur->lhs) && IsScalar(cur->rhs)) {
+    if (IsInt(cur->lhs) && IsInt(cur->rhs))
+      SetEvalInt(cur, cur->lhs->eval.int_num / cur->rhs->eval.int_num);
+    else
+      SetEvalReal(cur, RealScalar(cur->lhs) / RealScalar(cur->rhs));
+  } else if (cur->rhs->type == Tp_Spm && IsScalar(cur->lhs)) {
+    ThrowError(cur->tk, InvalidOperationForScalarMat);
+  } else if (cur->lhs->type == Tp_Spm && IsScalar(cur->rhs)) {
+    const spmx::SparseMatrixXd& lhs = *(cur->lhs->eval.spm);
+    ASSIGN_SPM(cur, lhs * (1.0 / RealScalar(cur->rhs)));
+  } else {
+    ThrowError(cur->tk, InvalidOperationForMatrix);
+  }
+}
+
+void FreeMatrix(AstNode* cur) {
+  if (cur == nullptr) return;
+  FreeMatrix(cur->lhs);
+  FreeMatrix(cur->rhs);
+  if ((cur->sem == SM_Add || cur->sem == SM_Sub || cur->sem == SM_Mul ||
+       cur->sem == SM_Div) &&
+      cur->type == Tp_Spm)
+    delete cur->eval.spm;
+}
+
 void Exec(AstNode* cur) {
   while (true) {
     switch (cur->sem) {
       case SM_For:
-        if (cur->init)
-          Exec(cur->init);
-        for(;;) {
+        if (cur->init) Exec(cur->init);
+        loop_dep++;
+        for (;;) {
           if (cur->cond) {
             Exec(cur->cond);
             CheckInt(cur->cond);
@@ -98,58 +233,19 @@ void Exec(AstNode* cur) {
           if (cur->then) Exec(cur->then);
           if (cur->inc) Exec(cur->inc);
         }
+        loop_dep--;
         break;
       case SM_Mul:
-        ExecBinary(cur);
-        if (IsScalar(cur->lhs) && IsScalar(cur->rhs)) {
-          if (IsInt(cur->lhs) && IsInt(cur->rhs))
-            SetEvalInt(cur, cur->lhs->eval.int_num * cur->rhs->eval.int_num);
-          else
-            SetEvalReal(cur, RealScalar(cur->lhs) * RealScalar(cur->rhs));
-        } /* else if (IsVec(cur->lhs) || IsScalar(cur->rhs)) {
-            SetEvalVec(cur, Vec(cur->lhs) * RealScalar(cur->rhs));
-          } else if (IsSpm(cur->lhs) && IsScalar(cur)) {
-            SetEvalSpm(cur, Spm(cur->lhs) * RealScalar(cur->rhs));
-          }*/
+        ProcessMul(cur);
         break;
       case SM_Add:
-        ExecBinary(cur);
-        if (IsScalar(cur->lhs) && IsScalar(cur->rhs)) {
-          if (IsInt(cur->lhs) && IsInt(cur->rhs))
-            SetEvalInt(cur, cur->lhs->eval.int_num + cur->rhs->eval.int_num);
-          else
-            SetEvalReal(cur, RealScalar(cur->lhs) + RealScalar(cur->rhs));
-        } /* else if (IsVec(cur->lhs) && IsScalar(cur)) {
-            SetEvalVec(cur, Vec(cur->lhs) + RealScalar(cur->rhs));
-          } else if (IsSpm(cur->lhs) && IsScalar(cur)) {
-            SetEvalSpm(cur, Spm(cur->lhs) + RealScalar(cur->rhs));
-          }*/
+        ProcessAdd(cur);
         break;
       case SM_Sub:
-        ExecBinary(cur);
-        if (IsScalar(cur->lhs) && IsScalar(cur->rhs)) {
-          if (IsInt(cur->lhs) && IsInt(cur->rhs))
-            SetEvalInt(cur, cur->lhs->eval.int_num - cur->rhs->eval.int_num);
-          else
-            SetEvalReal(cur, RealScalar(cur->lhs) - RealScalar(cur->rhs));
-        } /* else if (IsVec(cur->lhs) && IsScalar(cur)) {
-            SetEvalVec(cur, Vec(cur->lhs) - RealScalar(cur->rhs));
-          } else if (IsSpm(cur->lhs) && IsScalar(cur)) {
-            SetEvalSpm(cur, Spm(cur->lhs) - RealScalar(cur->rhs));
-          }*/
+        ProcessSub(cur);
         break;
       case SM_Div:
-        ExecBinary(cur);
-        if (IsScalar(cur->lhs) && IsScalar(cur->rhs)) {
-          if (IsInt(cur->lhs) && IsInt(cur->rhs))
-            SetEvalInt(cur, cur->lhs->eval.int_num / cur->rhs->eval.int_num);
-          else
-            SetEvalReal(cur, RealScalar(cur->lhs) / RealScalar(cur->rhs));
-        } /* else if (IsVec(cur->lhs) && IsScalar(cur)) {
-            SetEvalVec(cur, Vec(cur->lhs) / RealScalar(cur->rhs));
-          } else if (IsSpm(cur->lhs) && IsScalar(cur)) {
-            SetEvalSpm(cur, Spm(cur->lhs) / RealScalar(cur->rhs));
-          }*/
+        ProcessDiv(cur);
         break;
       case SM_Mod:
         ExecIntBinary(cur);
@@ -165,9 +261,9 @@ void Exec(AstNode* cur) {
           Exec(cur->else_then);
         break;
       case SM_Return:
+        std::printf("Program returned.");
         if (cur->ret) {
           Exec(cur->ret);
-          std::printf("Program returned.");
           if (cur->ret->type == Tp_Undef)
             std::printf("The returned value is undefined.\n");
           if (IsInt(cur->ret))
@@ -175,6 +271,11 @@ void Exec(AstNode* cur) {
           if (IsReal(cur->ret))
             std::printf("The returned value is %lf.\n",
                         cur->ret->eval.real_num);
+          if (cur->ret->type == Tp_Spm) {
+            std::printf("Returned a sparse matrix of shape (%u, %u)\n",
+                        cur->ret->eval.spm->Rows(), cur->ret->eval.spm->Cols());
+            std::cout << *(cur->ret->eval.spm) << std::endl;
+          }
         }
         exit(0);
       case SM_Comma:
@@ -184,14 +285,7 @@ void Exec(AstNode* cur) {
         cur->eval = cur->lhs->eval;
         break;
       case SM_Assign:
-        CheckBinary(cur);
-        CheckLvalue(cur->lhs);
-        Exec(cur->rhs);
-        Assign(cur->lhs->var, cur->rhs);
-        if (IsReal(cur->rhs))
-          SetEvalReal(cur, cur->rhs->eval.real_num);
-        if (IsInt(cur->rhs))
-          SetEvalReal(cur, cur->rhs->eval.int_num);
+        ProcessAssign(cur);
         break;
       case SM_LogOr:
         ExecIntBinary(cur);
@@ -254,10 +348,6 @@ void Exec(AstNode* cur) {
         Exec(cur->lhs);
         if (IsInt(cur->lhs)) SetEvalInt(cur, -cur->lhs->eval.int_num);
         if (IsReal(cur->lhs)) SetEvalReal(cur, -cur->lhs->eval.real_num);
-        //      if (IsVec(cur->lhs))
-        //      SetEvalVec(cur, -cur->lhs->eval.vec);
-        //   if (IsSpm(cur->lhs))
-        //    SetEvalVec(cur, -cur->lhs->eval.spm);
         break;
       case SM_Block:
         break;
@@ -278,14 +368,22 @@ void Exec(AstNode* cur) {
       case SM_Const:
         return;
       case SM_Var:
-        if (cur->var->type == Tp_Int) cur->eval.int_num = cur->var->eval.int_num;
-        if (cur->var->type == Tp_Real) cur->eval.real_num = cur->var->eval.real_num;
+        if (cur->var->type == Tp_Int)
+          cur->eval.int_num = cur->var->eval.int_num;
+        if (cur->var->type == Tp_Real)
+          cur->eval.real_num = cur->var->eval.real_num;
+        if (cur->var->type == Tp_Spm) cur->eval.spm = cur->var->eval.spm;
         cur->type = cur->var->type;
         return;
+      case SM_TripletList:
+        GetTripletList(cur);
+      case SM_Triplet:
+        ThrowError(cur->tk, CannotHappen);
     }
-    if (cur->nxt)
+    if (cur->nxt) {
+      if (loop_dep == 0) FreeMatrix(cur);
       cur = cur->nxt;
-    else
-      return ;
+    } else
+      return;
   }
 }

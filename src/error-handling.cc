@@ -43,7 +43,7 @@ void ThrowError(Token* tk, ErrorType error) {
       std::printf("Incompatible type.\n");
       break;
     case NotSupported:
-      std::printf("This syntax has not been supported yet.\n");
+      std::printf("Sorry, not supported yet.\n");
       break;
     case DimShouldBePosInt:
       std::printf("Dimensions in declarations should be positive integers.\n");
@@ -68,6 +68,18 @@ void ThrowError(Token* tk, ErrorType error) {
       std::printf(
           "Declaring a complex type when initializing a for loop is not "
           "allowed.\n");
+      break;
+    case CannotHappen:
+      std::printf("The interpreter must be mad! Please report the issue.\n");
+      break;
+    case InvalidAssignment:
+      std::printf("This assignment is not allowed.\n");
+      break;
+    case InvalidOperationForScalarMat:
+      std::printf("This operation is invalid for scalar and matrix.\n");
+      break;
+    case InvalidOperationForMatrix:
+      std::printf("This operation is invalid between matrices.\n");
       break;
   }
   std::printf("%d| ", tk->line_no);

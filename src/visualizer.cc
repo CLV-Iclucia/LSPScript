@@ -94,6 +94,12 @@ static void OutputNode(FILE* fp, AstNode* cur) {
         fputc(cur->var->name->loc[i], fp);
       std::fprintf(fp, "\"];");
       break;
+    case SM_TripletList:
+      std::fprintf(fp, "Triplet List\"];");
+      break;
+    case SM_Triplet:
+      std::fprintf(fp, "Triplet\"];");
+      break;
   }
   std::fprintf(fp, "\n");
 }

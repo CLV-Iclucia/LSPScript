@@ -8,6 +8,8 @@
 #include <ast.h>
 #include <hash.h>
 #include <token.h>
+
+#include "sparse-matrix.h"
 enum BasicType {
     Tp_Function,
     Tp_Int,
@@ -24,8 +26,9 @@ struct Obj {
   Token* name;
   Obj* params;
   union {
-    int int_num = 0;
+    int int_num;
     Real real_num;
+    spmx::SparseMatrixXd *spm = nullptr;
   }eval;
   BasicType type = Tp_Undef;
 };
