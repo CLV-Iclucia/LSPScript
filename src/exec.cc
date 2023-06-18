@@ -120,7 +120,7 @@ void ProcessAssign(AstNode* cur) {
     if (cur->lhs->var->type == Tp_Spm) ThrowError(cur->tk, InvalidAssignment);
     Assign(cur->lhs->var, cur->rhs);
     if (IsReal(cur->rhs)) SetEvalReal(cur, cur->rhs->eval.real_num);
-    if (IsInt(cur->rhs)) SetEvalReal(cur, cur->rhs->eval.int_num);
+    if (IsInt(cur->rhs)) SetEvalInt(cur, cur->rhs->eval.int_num);
   }
   if (cur->rhs->sem == SM_TripletList || cur->rhs->type == Tp_Spm) {
     if (cur->lhs->var->type != Tp_Spm) ThrowError(cur->tk, InvalidAssignment);

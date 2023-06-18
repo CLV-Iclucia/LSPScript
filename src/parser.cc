@@ -77,11 +77,14 @@ static AstNode* ParsePrimary() {
     if (FindVar(cur) != NotFound) {
       Obj* obj = LookUpVar(cur);
       cur = cur->nxt;
-      return new AstNode(SM_Var, obj);
+      ast = new AstNode(SM_Var, obj);
+      ast->tk = cur;
+      return ast;
     } else
       ThrowError(cur, UnknownIdentifier);
   } else if (cur->type == TK_Int || cur->type == TK_Real) {
     ast = new AstNode(SM_Const, nullptr, nullptr);
+    ast->tk = cur;
     if (cur->type == TK_Int) {
       ast->type = Tp_Int;
       ast->eval.int_num = cur->int_num;
@@ -108,8 +111,10 @@ static AstNode* ParsePostfix() {
       ThrowError(cur, NotSupported);
     } else if (Consume(cur, "++")) {
       ast = new AstNode(SM_Inc, ast, nullptr);
+      ast->tk = cur;
     } else if (Consume(cur, "--")) {
       ast = new AstNode(SM_Dec, ast, nullptr);
+      ast->tk = cur;
     } else
       break;
   }
@@ -120,10 +125,16 @@ static AstNode* ParsePostfix() {
  * unary = "!"|"-" unary | postfix
  */
 static AstNode* ParseUnary() {
-  if (Consume(cur, "!"))
-    return new AstNode(SM_LogNot, ParseUnary(), nullptr);
-  else if (Consume(cur, "-"))
-    return new AstNode(SM_Neg, ParseUnary(), nullptr);
+  AstNode* ast = nullptr;
+  if (Consume(cur, "!")) {
+    ast = new AstNode(SM_LogNot, ParseUnary(), nullptr);
+    ast->tk = cur;
+    return ast;
+  } else if (Consume(cur, "-")) {
+    ast = new AstNode(SM_Neg, ParseUnary(), nullptr);
+    ast->tk = cur;
+    return ast;
+  }
   return ParsePostfix();
 }
 
@@ -132,14 +143,18 @@ static AstNode* ParseUnary() {
  */
 static AstNode* ParseMul() {
   struct AstNode* ast = ParseUnary();
+  ast->tk = cur;
   while (true) {
-    if (Consume(cur, "*"))
+    if (Consume(cur, "*")) {
       ast = new AstNode(SM_Mul, ast, ParseUnary());
-    else if (Consume(cur, "/"))
+      ast->tk = cur;
+    } else if (Consume(cur, "/")) {
       ast = new AstNode(SM_Div, ast, ParseUnary());
-    else if (Consume(cur, "%"))
+      ast->tk = cur;
+    } else if (Consume(cur, "%")) {
       ast = new AstNode(SM_Mod, ast, ParseUnary());
-    else
+      ast->tk = cur;
+    } else
       break;
   }
   return ast;
@@ -151,11 +166,15 @@ static AstNode* ParseMul() {
 static AstNode* ParseAdd() {
   AstNode* ast = ParseMul();
   while (true) {
-    if (Consume(cur, "+"))
+    if (Consume(cur, "+")) {
       ast = new AstNode(SM_Add, ast, ParseMul());
-    else if (Consume(cur, "-"))
+      ast->tk = cur;
+    }
+
+    else if (Consume(cur, "-")) {
       ast = new AstNode(SM_Sub, ast, ParseMul());
-    else
+      ast->tk = cur;
+    } else
       break;
   }
   return ast;
@@ -167,16 +186,21 @@ static AstNode* ParseAdd() {
  */
 static AstNode* ParseRelation() {
   struct AstNode* ast = ParseAdd();
+  ast->tk = cur;
   while (true) {
-    if (Consume(cur, "<"))
-      return new AstNode(SM_Lt, ast, ParseAdd());
-    else if (Consume(cur, ">"))
-      return new AstNode(SM_Gt, ast, ParseAdd());
-    else if (Consume(cur, "<="))
-      return new AstNode(SM_Le, ast, ParseAdd());
-    else if (Consume(cur, ">="))
-      return new AstNode(SM_Ge, ast, ParseAdd());
-    else
+    if (Consume(cur, "<")) {
+      ast = new AstNode(SM_Lt, ast, ParseAdd());
+      ast->tk = cur;
+    } else if (Consume(cur, ">")) {
+      ast = new AstNode(SM_Gt, ast, ParseAdd());
+      ast->tk = cur;
+    } else if (Consume(cur, "<=")) {
+      ast = new AstNode(SM_Le, ast, ParseAdd());
+      ast->tk = cur;
+    } else if (Consume(cur, ">=")) {
+      ast = new AstNode(SM_Ge, ast, ParseAdd());
+      ast->tk = cur;
+    } else
       break;
   }
   return ast;
@@ -189,11 +213,13 @@ static AstNode* ParseRelation() {
 static AstNode* ParseEquality() {
   struct AstNode* ast = ParseRelation();
   while (true) {
-    if (Consume(cur, "=="))
+    if (Consume(cur, "==")) {
       ast = new AstNode(SM_Equal, ast, ParseRelation());
-    else if (Consume(cur, "!="))
+      ast->tk = cur;
+    } else if (Consume(cur, "!=")) {
       ast = new AstNode(SM_nEqual, ast, ParseRelation());
-    else
+      ast->tk = cur;
+    } else
       break;
   }
   return ast;
@@ -204,7 +230,10 @@ static AstNode* ParseEquality() {
  */
 static AstNode* ParseLogAnd() {
   struct AstNode* ast = ParseEquality();
-  while (Consume(cur, "&&")) ast = new AstNode(SM_LogAnd, ast, ParseEquality());
+  while (Consume(cur, "&&")) {
+    ast = new AstNode(SM_LogAnd, ast, ParseEquality());
+    ast->tk = cur;
+  }
   return ast;
 }
 /**
@@ -213,7 +242,10 @@ static AstNode* ParseLogAnd() {
  */
 static AstNode* ParseLogOr() {
   struct AstNode* ast = ParseLogAnd();
-  while (Consume(cur, "||")) ast = new AstNode(SM_LogOr, ast, ParseLogAnd());
+  while (Consume(cur, "||")) {
+    ast = new AstNode(SM_LogOr, ast, ParseLogAnd());
+    ast->tk = cur;
+  }
   return ast;
 }
 
@@ -221,18 +253,24 @@ static AstNode* ParseLogOr() {
  * assign = logor (assign-op assign) ?
  */
 static AstNode* ParseAssign() {
-  struct AstNode* lhs = ParseLogOr();
-  if (Consume(cur, "="))
-    return new AstNode(SM_Assign, lhs, ParseAssign());
-  else if (Consume(cur, "*="))
-    return new AstNode(SM_Assign, lhs, new AstNode(SM_Mul, lhs, ParseAssign()));
-  else if (Consume(cur, "/="))
-    return new AstNode(SM_Assign, lhs, new AstNode(SM_Div, lhs, ParseAssign()));
-  else if (Consume(cur, "+="))
-    return new AstNode(SM_Assign, lhs, new AstNode(SM_Add, lhs, ParseAssign()));
-  else if (Consume(cur, "-="))
-    return new AstNode(SM_Assign, lhs, new AstNode(SM_Sub, lhs, ParseAssign()));
-  return lhs;
+  struct AstNode* ast = ParseLogOr();
+  if (Consume(cur, "=")) {
+    ast = new AstNode(SM_Assign, ast, ParseAssign());
+    ast->tk = cur;
+  } else if (Consume(cur, "*=")) {
+    ast = new AstNode(SM_Assign, ast, new AstNode(SM_Mul, ast, ParseAssign()));
+    ast->tk = cur;
+  } else if (Consume(cur, "/=")) {
+    ast = new AstNode(SM_Assign, ast, new AstNode(SM_Div, ast, ParseAssign()));
+    ast->tk = cur;
+  } else if (Consume(cur, "+=")) {
+    ast = new AstNode(SM_Assign, ast, new AstNode(SM_Add, ast, ParseAssign()));
+    ast->tk = cur;
+  } else if (Consume(cur, "-=")) {
+    ast = new AstNode(SM_Assign, ast, new AstNode(SM_Sub, ast, ParseAssign()));
+    ast->tk = cur;
+  }
+  return ast;
 }
 
 /**
@@ -241,7 +279,10 @@ static AstNode* ParseAssign() {
  */
 static AstNode* ParseExpr() {
   struct AstNode* ast = ParseAssign();
-  if (Consume(cur, ",")) return new AstNode(SM_Comma, ast, ParseExpr());
+  if (Consume(cur, ",")) {
+    ast = new AstNode(SM_Comma, ast, ParseExpr());
+    ast->tk = cur;
+  }
   return ast;
 }
 
@@ -302,6 +343,13 @@ static AstNode* ParseStmts() {
   AstNode* ast = new AstNode(SM_Block);
   AstNode* tail = ast;
   while (!Consume(cur, "}")) {
+    if (Equal(cur, "var") || Equal(cur, "spm") || Equal(cur, "vec")) {
+      AstNode* decl = ParseDeclaration();
+      if (decl == nullptr) continue;
+      tail->nxt = decl;
+      tail = decl;
+      continue;
+    }
     tail->nxt = ParseStmt();
     tail = tail->nxt;
   }
@@ -330,6 +378,7 @@ static AstNode* ParseTriplet() {
  */
 static AstNode* ParseTripletList() {
   AstNode* ast = new AstNode(SM_TripletList);
+  ast->tk = cur;
   Skip(cur, "{");
   AstNode* tail = ast;
   uint cnt = 0;
@@ -391,6 +440,7 @@ static AstNode* ParseMatVecDeclaration() {
           new AstNode(SM_Assign, new AstNode(SM_Var, obj), ParseTripletList());
     else
       ast = new AstNode(SM_Assign, new AstNode(SM_Var, obj), ParseAssign());
+    ast->tk = cur;
   }
   Skip(cur, ";");
   return ast;
@@ -440,8 +490,10 @@ static AstNode* ParseDeclaration() {
       decl = new AstNode(SM_Assign, new AstNode(SM_Var, obj), decl);
       if (decl_cnt == 1)
         ast = decl;
-      else
+      else {
         ast = new AstNode(SM_Comma, ast, decl);
+        ast->tk = cur;
+      }
     }
   }
   Skip(cur, ";");
@@ -456,6 +508,7 @@ static AstNode* ParseDeclaration() {
 static AstNode* ParseProg() {
   EnterScope();
   AstNode* ast = new AstNode(SM_Block);
+  ast->tk = cur;
   AstNode* tail = ast;
   while (cur->type != TK_Eof) {
     if (Equal(cur, "var") || Equal(cur, "spm") || Equal(cur, "vec")) {
