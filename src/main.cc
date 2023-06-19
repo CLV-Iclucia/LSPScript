@@ -13,7 +13,7 @@ int main(int argc, char** argv) {
     std::printf("Lspi command line launched.\n");
   } else if ((std::strcmp(argv[1], "-h") == 0) ||
              (std::strcmp(argv[1], "--help") == 0)) {
-    std::printf("Usage: lspi [option] ... [file] [arg] ...\n");
+    std::printf("Usage: lspi [file] [visualizer-option]\n");
   } else {
     std::printf("Reading code from %s...\n", argv[1]);
     size_t tot = ReadCode(argv[1]);
